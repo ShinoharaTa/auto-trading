@@ -1,0 +1,42 @@
+# コピーして config.toml を作る（config.toml は git 管理外）
+# APIキーは「資産参照」「取引」のみ。出金(withdraw)権限は付けないこと。
+
+[data]
+pair = "btc_jpy"        # 単発バックテスト等の既定ペア
+# ペア別チューニング/運用の対象。各ペアは独立した設定を持つ（state/pair_settings.json）
+pairs = ["btc_jpy", "eth_jpy", "xrp_jpy", "ltc_jpy"]
+db_path = "data/candles.sqlite"
+# 取得開始日(YYYYMMDD)。空なら fetch.py のデフォルトに従う
+start_date = "20240101"
+
+[api]
+# 本番運用でのみ使用。バックテストでは不要。
+# 値は環境変数から読む想定: BITBANK_API_KEY / BITBANK_API_SECRET
+key_env = "BITBANK_API_KEY"
+secret_env = "BITBANK_API_SECRET"
+
+# ===== ペーパートレード（実発注なし・仮想）=====
+[paper]
+db_path = "state/paper.sqlite"
+poll_seconds = 60
+# Discord Webhook は環境変数 DISCORD_WEBHOOK_URL に設定する（ここには書かない）
+
+# A: 1hトレンド・成行(taker)・各¥100k。約定確実で堅実
+[[paper.accounts]]
+name = "A_trend"
+strategy = "sma_cross"
+order_type = "taker"
+timeframe = "1h"
+pairs = ["btc_jpy", "eth_jpy"]
+base_jpy = 100000
+params = { fast = 40, slow = 50, atr_stop_mult = 2.5, risk_per_trade = 0.01 }
+
+# B: 5m RSI逆張り・指値(maker)・¥100k。指値の実約定率を実測する
+[[paper.accounts]]
+name = "B_intraday"
+strategy = "rsi"
+order_type = "maker"
+timeframe = "5m"
+pairs = ["btc_jpy"]
+base_jpy = 100000
+params = { rsi_period = 14, rsi_entry = 30, rsi_exit = 55, atr_stop_mult = 2.5, risk_per_trade = 0.01 }

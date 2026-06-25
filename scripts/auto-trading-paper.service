@@ -1,0 +1,21 @@
+# systemd ユニット テンプレート（Linuxサーバー用）。
+# /path/to/auto-trading を実パスに置換し、下記でインストール:
+#   sudo cp scripts/auto-trading-paper.service /etc/systemd/system/
+#   sudo systemctl daemon-reload
+#   sudo systemctl enable --now auto-trading-paper
+#   journalctl -u auto-trading-paper -f      # ログ確認
+[Unit]
+Description=auto-trading paper trading daemon (no real orders)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=/path/to/auto-trading
+ExecStart=/path/to/auto-trading/scripts/paper.sh
+EnvironmentFile=-/path/to/auto-trading/.env
+Restart=always
+RestartSec=10
+
+[Install]
+WantedBy=multi-user.target
