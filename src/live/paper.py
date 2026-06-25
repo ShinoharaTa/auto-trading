@@ -8,12 +8,13 @@
 from __future__ import annotations
 
 import argparse
+import signal
 import time
 from datetime import datetime, timezone
 
 from src.config import load
 from src.data import fetch as FETCH
-from src.live import engine, feed
+from src.live import discord, engine, feed
 from src.live.store import PaperStore
 
 # config に [paper] が無い場合の既定（A=成行トレンド / B=指値intraday、各¥100k）
@@ -70,16 +71,32 @@ def main() -> None:
     args = ap.parse_args()
     db_path, accounts, poll = _cfg()
     store = PaperStore(db_path)
-    print(f"=== paper trading start: accounts={[a['name'] for a in accounts]} "
-          f"poll={poll}s db={db_path} ===", flush=True)
+    names = [a["name"] for a in accounts]
+    print(f"=== paper trading start: accounts={names} poll={poll}s db={db_path} ===",
+          flush=True)
     if args.once:
         run_once(store, db_path, accounts)
         return
+
+    # 停止(SIGTERM/SIGINT)時にDiscordへ通知してから終了
+    def _bye(signum, _frame):
+        discord.post(f"🔴 ペーパートレード停止 (口座: {', '.join(names)})")
+        raise SystemExit(0)
+
+    signal.signal(signal.SIGTERM, _bye)
+    signal.signal(signal.SIGINT, _bye)
+    discord.post(f"🟢 ペーパートレード起動 (口座: {', '.join(names)} / poll {poll}s)")
+
+    last_err_notify = 0.0
     while True:
         try:
             run_once(store, db_path, accounts)
         except Exception as e:
             print(f"[paper] loop ERROR {e}", flush=True)
+            now = time.time()
+            if now - last_err_notify > 1800:  # 同種エラーの連投を防ぐ(30分に1回)
+                discord.post(f"⚠️ ペーパートレードでエラー: {e}")
+                last_err_notify = now
         time.sleep(poll)
 
 

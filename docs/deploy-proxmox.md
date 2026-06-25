@@ -94,21 +94,30 @@ systemctl status auto-trading-paper --no-pager
 journalctl -u auto-trading-paper -f      # ログを追う（Ctrl-C で抜ける）
 ```
 
-## 8. 日次 Discord 通知（cron, 18:00 JST）
+## 8. 日次 Discord 通知（systemd timer, 18:00 JST）
+
+cron ではなく systemd タイマーで送る（常駐サービスと管理を一元化できる）。
 
 ```bash
-crontab -e
+for f in auto-trading-notify.service auto-trading-notify.timer; do
+  sed 's#/path/to/auto-trading#/opt/auto-trading#g' scripts/$f \
+    | tee /etc/systemd/system/$f
+done
+systemctl daemon-reload
+systemctl enable --now auto-trading-notify.timer
+systemctl list-timers auto-trading-notify.timer --no-pager   # 次回発火時刻を確認
+systemctl start auto-trading-notify.service                  # 手動で即時テスト送信
 ```
 
-末尾に追記:
+> `OnCalendar=*-*-* 18:00:00 Asia/Tokyo` でJST固定（systemd v252+）。古い場合は
+> `timedatectl set-timezone Asia/Tokyo` した上で `.timer` の TZ 指定を外す。
 
-```cron
-CRON_TZ=Asia/Tokyo
-0 18 * * * /opt/auto-trading/scripts/notify.sh >> /opt/auto-trading/state/cron.log 2>&1
-```
+### 起動・停止・エラーの通知（自動）
 
-（任意）月次の再チューニングも回すなら:
+常駐プロセス（`auto-trading-paper`）は **起動時 🟢 / 停止時 🔴 / ループエラー時 ⚠️** を
+自動で Discord に送る。`systemctl start/stop auto-trading-paper` がそのまま通知になる。
 
+（任意）月次の再チューニングは cron でも systemd timer でも可。cron 例:
 ```cron
 0 3 1 * * /opt/auto-trading/scripts/retune.sh >> /opt/auto-trading/state/cron.log 2>&1
 ```
@@ -127,3 +136,27 @@ CRON_TZ=Asia/Tokyo
 - **1ヶ月後のレビュー**: `state/paper.sqlite` の `trade` / `fillstat` / `snapshot` と
   Discord ログで判定（特に **B_intraday の指値約定率**）。
 - バックアップ対象は `state/`（運用状態）だけ。コードは Git にある。
+
+## トラブルシュート
+
+### apt で `Temporary failure resolving 'archive.ubuntu.com'`
+
+コンテナ内のDNS名前解決の失敗。まず切り分け:
+
+```bash
+ping -c1 1.1.1.1       # ① 生のIP疎通（DNS不要）
+ping -c1 google.com    # ② 名前解決つき疎通
+cat /etc/resolv.conf   # ③ nameserver が入っているか
+ip route               # ④ default(ゲートウェイ)があるか
+```
+
+- **①○ ②×** → DNSの問題。即時対処:
+  ```bash
+  echo -e "nameserver 1.1.1.1\nnameserver 8.8.8.8" > /etc/resolv.conf
+  apt update
+  ```
+  恒久化はホスト側で `pct set <CTID> --nameserver "1.1.1.1 8.8.8.8"`（or WebUIのDNS欄）。
+- **①も×** → ネットワーク未疎通。WebUI → CT → Network(net0) でブリッジ/ゲートウェイを確認。
+
+> `build-essential` / `python3-dev` は基本不要（pandas/numpy は wheel で入る）。
+> 最小は `git python3-venv python3-pip tzdata`。

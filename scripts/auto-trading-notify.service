@@ -1,0 +1,11 @@
+# 日次Discordレポート（oneshot）。timer から起動される。
+# /path/to/auto-trading を実パスに置換して /etc/systemd/system/ に配置。
+[Unit]
+Description=auto-trading daily Discord report
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+WorkingDirectory=/path/to/auto-trading
+ExecStart=/path/to/auto-trading/scripts/notify.sh

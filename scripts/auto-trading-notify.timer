@@ -1,0 +1,12 @@
+# 毎日 18:00 JST に日次レポートを送る systemd タイマー。
+# OnCalendar にタイムゾーンを明記（systemd v252+）。古い場合はコンテナのTZを
+# Asia/Tokyo にして時刻指定だけにする: timedatectl set-timezone Asia/Tokyo
+[Unit]
+Description=Run auto-trading daily Discord report at 18:00 JST
+
+[Timer]
+OnCalendar=*-*-* 18:00:00 Asia/Tokyo
+Persistent=true
+
+[Install]
+WantedBy=timers.target

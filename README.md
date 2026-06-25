@@ -92,12 +92,14 @@ sudo systemctl daemon-reload && sudo systemctl enable --now auto-trading-paper
 journalctl -u auto-trading-paper -f
 ```
 
-### 3. 日次通知（cron, 18:00 JST）
-```cron
-# サーバーがUTCでも JST固定するため CRON_TZ を指定
-CRON_TZ=Asia/Tokyo
-0 18 * * * /path/to/auto-trading/scripts/notify.sh >> /path/to/auto-trading/state/cron.log 2>&1
+### 3. 日次通知（systemd timer, 18:00 JST）
+```bash
+# scripts/auto-trading-notify.{service,timer} のパスを置換して配置
+systemctl enable --now auto-trading-notify.timer
 ```
+- 日次レポート（評価額・1日/1週/2週・約定率）を 18:00 JST に送信
+- 常駐プロセスは **起動🟢/停止🔴/エラー⚠️** も自動でDiscord通知
+- 詳細は [docs/deploy-proxmox.md](docs/deploy-proxmox.md)
 
 1ヶ月後、Discordログと `state/paper.sqlite`（snapshot/trade/fillstat）で結果をレビュー。
 特に **B_intraday の指値約定率** がバックテスト前提（ほぼ100%）からどれだけ下がるかがBの真偽。
