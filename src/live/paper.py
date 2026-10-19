@@ -29,21 +29,28 @@ DEFAULT_ACCOUNTS = [
 ]
 
 
-def _cfg() -> tuple[str, list[dict], int]:
+def _cfg() -> tuple[str, list[dict], int, str]:
+    """(ペーパー状態DB, 口座一覧, ポーリング秒, ローソク足キャッシュDB)。
+
+    ローソク足は fetch/backtest/retune と同じ ``[data].db_path`` を使う。
+    状態DB(``[paper].db_path``)に混ぜると README のバックフィル手順が効かない。
+    """
     cfg = load()
     paper = cfg.get("paper", {})
     db_path = paper.get("db_path", "state/paper.sqlite")
     accounts = paper.get("accounts") or DEFAULT_ACCOUNTS
     poll = int(paper.get("poll_seconds", 60))
-    return db_path, accounts, poll
+    candle_db = cfg.get("data", {}).get("db_path", "data/candles.sqlite")
+    return db_path, accounts, poll, candle_db
 
 
-def run_once(store: PaperStore, db_path: str, accounts: list[dict]) -> None:
+def run_once(store: PaperStore, candle_db: str, accounts: list[dict]) -> None:
+    """全口座を1ステップ進める。candle_db はローソク足キャッシュ(状態DBではない)。"""
     now_ts = int(time.time() * 1000)
     pairs = {pp for a in accounts for pp in a["pairs"]}
     for pair in pairs:                       # 当日足を1ペア1回だけ取得
         try:
-            FETCH.run(pair, db_path, datetime.now(timezone.utc).date(),
+            FETCH.run(pair, candle_db, datetime.now(timezone.utc).date(),
                       datetime.now(timezone.utc).date(), pause=0.0)
         except Exception as e:
             print(f"[paper] fetch {pair} WARN {e}", flush=True)
@@ -53,7 +60,7 @@ def run_once(store: PaperStore, db_path: str, accounts: list[dict]) -> None:
     def provider(pair: str, tf: str):
         key = (pair, tf)
         if key not in bars_cache:
-            bars_cache[key] = feed.get_recent_bars(db_path, pair, tf, refresh=False)
+            bars_cache[key] = feed.get_recent_bars(candle_db, pair, tf, refresh=False)
         return bars_cache[key]
 
     for acct in accounts:
@@ -69,13 +76,13 @@ def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("--once", action="store_true", help="1回だけ実行して終了")
     args = ap.parse_args()
-    db_path, accounts, poll = _cfg()
+    db_path, accounts, poll, candle_db = _cfg()
     store = PaperStore(db_path)
     names = [a["name"] for a in accounts]
-    print(f"=== paper trading start: accounts={names} poll={poll}s db={db_path} ===",
-          flush=True)
+    print(f"=== paper trading start: accounts={names} poll={poll}s "
+          f"state={db_path} candles={candle_db} ===", flush=True)
     if args.once:
-        run_once(store, db_path, accounts)
+        run_once(store, candle_db, accounts)
         return
 
     # 停止(SIGTERM/SIGINT)時にDiscordへ通知してから終了
@@ -90,7 +97,7 @@ def main() -> None:
     last_err_notify = 0.0
     while True:
         try:
-            run_once(store, db_path, accounts)
+            run_once(store, candle_db, accounts)
         except Exception as e:
             print(f"[paper] loop ERROR {e}", flush=True)
             now = time.time()
