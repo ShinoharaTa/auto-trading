@@ -66,7 +66,10 @@ def _atr(df: pd.DataFrame, period: int) -> pd.Series:
 
 def run(df: pd.DataFrame, params: dict[str, Any] | None = None,
         bars_per_year: float = 525_600.0,
-        strategy: str = "sma_cross") -> tuple[pd.Series, M.Metrics]:
+        strategy: str = "sma_cross",
+        no_entry_before: pd.Timestamp | None = None) -> tuple[pd.Series, M.Metrics]:
+    """no_entry_before を渡すと、その時刻より前のバーでは新規エントリーしない
+    （指標のウォームアップ用に前置したバーを取引対象から外す）。"""
     p = {**DEFAULT_PARAMS, **(params or {})}
     if len(df) < ST.warmup_bars(strategy, p) + 2:
         eq = pd.Series([p["initial_equity"]], index=df.index[:1] if len(df) else None)
@@ -124,7 +127,8 @@ def run(df: pd.DataFrame, params: dict[str, Any] | None = None,
                   and equity <= day_start_equity * (1.0 - float(daily_limit)))
 
         # --- 無ポジ: シグナル点灯 & ATR有効 & 非停止ならエントリー ---
-        if units == 0 and sig == 1 and not halted and not np.isnan(a) and a > 0:
+        if (units == 0 and sig == 1 and not halted and not np.isnan(a) and a > 0
+                and (no_entry_before is None or idx[i] >= no_entry_before)):
             stop_dist = p["atr_stop_mult"] * float(a)
             risk_cash = equity * p["risk_per_trade"]
             size = risk_cash / stop_dist           # 損切りまでの距離で数量を決める

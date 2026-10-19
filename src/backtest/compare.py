@@ -4,10 +4,11 @@ montecarlo は戦略ごとに別々の区間を引くため、戦略同士を同
 ここでは「カレンダー時刻」で窓を N 本引き、全ペア・全戦略・全時間足を
 同じ窓集合で評価する。ジョブは multiprocessing(fork) で並列に回す。
 
-- 窓 [t0, t1) の前に 2×warmup_bars 本のプレフィックスを足して切り出す。
-  ウォームアップ中は全戦略が無ポジ（シグナル0 / ATR NaN）なので、窓本体の
-  total_return / max_drawdown / n_trades はそのまま窓の成績になる。
-  そのため montecarlo（プレフィックスなし）とは数値が一致しない。
+- 窓 [t0, t1) の前に max(2×warmup_bars, 200) 本のプレフィックスを足して切り出し、
+  指標をウォームアップさせる。simulator.run の no_entry_before=t0 で窓開始前の
+  新規エントリーを抑止するので、total_return / max_drawdown / n_trades は
+  窓本体の成績と一致する。そのため montecarlo（プレフィックスなし）とは数値が一致しない。
+- 窓の開始 t0 は 4h 境界に丸める。全時間足で窓のカレンダー範囲が一致し、B&H とも揃う。
 - 窓は互いに重なる（180日に60日窓は非重複で3本しか取れない）。p5 や勝ち区間率は
   見かけより粗い。用途は戦略同士の相対比較に限る。
 - 子プロセスで SQLite を開かない。親でロード→リサンプル→fork し、子は CoW で共有。
@@ -34,6 +35,12 @@ from src.data import resample as R
 # 既定の比較時間足（5m は重いので --timeframes で明示したときのみ）
 DEFAULT_TIMEFRAMES = ["15m", "30m", "1h", "4h"]
 
+# 窓開始の丸め単位（分）。最上位の時間足 4h に揃える
+WINDOW_ALIGN_MIN = 240
+# プレフィックスの下限本数。params={} だと warmup_bars が戦略関数側の既定値を
+# 見ないため、下限で指標のウォームアップを確保する（取引は no_entry_before で抑止）
+MIN_PREFIX_BARS = 200
+
 # (pair, timeframe) -> リサンプル済み DataFrame。(pair, "1m") は B&H 計算用の1分足。
 # fork 前に親で埋め、子は読むだけ。
 _FRAMES: dict[tuple[str, str], pd.DataFrame] = {}
@@ -52,8 +59,9 @@ class Job:
 
 def sample_windows(start: pd.Timestamp, end: pd.Timestamp, days: int, n: int,
                    seed: int) -> list[tuple[pd.Timestamp, pd.Timestamp]]:
-    """[start, end] 内に長さ days の窓を n 本、分単位の一様乱数で引く。"""
+    """[start, end] 内に長さ days の窓を n 本引く。t0 は 4h 境界に丸める。"""
     span = pd.Timedelta(days=days)
+    start = start.ceil(f"{WINDOW_ALIGN_MIN}min")   # 丸めの基準を 4h 境界にする
     room_min = int((end - start - span) / pd.Timedelta(minutes=1))
     if room_min < 0:
         raise ValueError(f"データ期間 {end - start} が窓長 {days}日 より短い")
@@ -61,7 +69,7 @@ def sample_windows(start: pd.Timestamp, end: pd.Timestamp, days: int, n: int,
     offs = rng.integers(0, room_min + 1, size=n)
     out = []
     for k in offs:
-        t0 = start + pd.Timedelta(minutes=int(k))
+        t0 = start + pd.Timedelta(minutes=int(k) // WINDOW_ALIGN_MIN * WINDOW_ALIGN_MIN)
         out.append((t0, t0 + span))
     return out
 
@@ -106,9 +114,11 @@ def _bh_return(pair: str, t0: pd.Timestamp, t1: pd.Timestamp) -> float:
 def _eval_job(job: Job) -> dict[str, Any]:
     params = json.loads(job.params)
     rdf = _FRAMES[(job.pair, job.timeframe)]
-    pre = 2 * ST.warmup_bars(job.strategy, {**S.DEFAULT_PARAMS, **params})
+    pre = max(2 * ST.warmup_bars(job.strategy, {**S.DEFAULT_PARAMS, **params}),
+              MIN_PREFIX_BARS)
     blk, warm_short = slice_window(rdf, job.t0, job.t1, pre)
-    _, m = S.run(blk, params, R.bars_per_year(job.timeframe), job.strategy)
+    _, m = S.run(blk, params, R.bars_per_year(job.timeframe), job.strategy,
+                 no_entry_before=job.t0)
     return {
         "pair": job.pair,
         "strategy": job.strategy,
