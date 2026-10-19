@@ -15,6 +15,45 @@ bitbank 向けの自動売買システム。**「確実に儲ける」ではな�
 - **モンテカルロ**: 多数の資産曲線を重ね、平均だけでなく分布（最悪5%・最大DD）を見る。
 - **ウォークフォワード**: 学習窓で最適化 → 次の窓（未知データ）で検証 → 窓をずらして反復。インサンプルとアウトオブサンプルを必ず分ける。
 - **過剰最適化検知**: 再評価ごとに最適パラメータの変動を記録。暴れたら警告。OOS成績が大きく劣化したら新パラメータを採用せず前回設定を維持。
+- **同一窓比較（compare）**: 複数の (戦略, params) × 時間足 × ペアを、**同じランダム60日窓の集合**で評価して横並びにする（`src/backtest/compare.py`）。montecarlo は戦略ごとに別々の区間を引くため、戦略同士の比較にはこちらを使う。
+
+### 同一窓比較（compare）
+
+窓はカレンダー時刻（分単位の一様乱数、`--seed` で固定）で引くので、全戦略・全時間足・全ペアで同じ期間になる。ジョブは `multiprocessing`(fork) で並列実行（`--workers` 既定 = コア数−1）。
+
+```bash
+# 既定: 全戦略(ST.STRATEGIES) × 15m/30m/1h/4h × 60日窓100本、既定 params 1 組
+python -m src.backtest.compare --pairs btc_jpy --strategies all
+# A_trend 相当の params を並べる / 時間足を絞る / 5m は明示したときだけ
+python -m src.backtest.compare --strategies sma_cross rsi --spec sma_cross:fast=40,slow=50 --timeframes 1h 4h
+# B&H と同条件の参考値（建玉上限を外す）。--param は全戦略の params に上書き
+python -m src.backtest.compare --strategies all --param max_position_frac=1.0
+# STRATEGY_GRIDS を展開（組数倍になる）
+python -m src.backtest.compare --strategies sma_cross --grid --timeframes 1h
+```
+
+出力: 窓別 `state/compare_rows_<pair>_<seed>.csv`（1ジョブ1行）と要約 `state/compare_<pair>_<seed>.csv`（標準出力にも表示）。複数ペア指定時は `<pair>` が `all` になり、pair 列付きで 1 ファイルにまとまる。窓別 CSV には `bh_label`（その窓の買い持ちリターンが `+--label-th` 超 = up / `-th` 未満 = down / それ以外 flat、既定 0.05）が付く。
+
+要約表の列（戦略×時間足×params ごと。`score` 降順、末尾にペアごとの `buy_and_hold` 行）:
+
+| 列 | 意味 |
+|---|---|
+| n_win | 窓数 |
+| win_rate | `total_return > 0` の窓の割合 |
+| median_ret / p5_ret | 窓リターンの中央値 / 5% 分位 |
+| worst_dd | 最大ドローダウンの最大値 |
+| med_trades | トレード数の中央値 |
+| bh_median | 同じ窓の買い持ちリターン中央値（全戦略で同じ値。基準線） |
+| beat_bh | `total_return > bh_return` の窓の割合 |
+| up_median / flat_median / down_median | `bh_label` 別のリターン中央値（局面別の成績） |
+| score | `median_ret + p5_ret`（optimize と同じ定義） |
+
+注意:
+- **窓は互いに重なる。** 180日に60日窓は非重複で3本しか取れず、ランダム100本は強く相関する（独立な100回の試行ではない）。p5 や勝ち区間率は見かけより粗いので、絶対水準（robust 判定）は信用せず、**同じ窓での戦略同士の相対比較**に使う。データを延ばす（`fetch --start`）ほど改善する。
+- **ウォームアップ・プレフィックス。** 各窓の前に `2 × warmup_bars` 本を足して切り出す。ウォームアップ中は全戦略が無ポジ（シグナル0 / ATR未確定）なので、`total_return` / `max_drawdown` / `n_trades` は窓本体の成績になり、4h×長期SMAでも60日まるごと取引対象になる（`sharpe` は平坦バーの分だけ薄まるが全戦略同条件）。プレフィックスの無い montecarlo とは**数値が一致しない**。データ先頭付近でプレフィックスが足りない窓は `warm_short=True`（除外はしない）。
+- **B&H 比較。** simulator は `max_position_frac=0.25` で建玉を資産の25%に制限するので、フル買い持ち（`bh_return`、1分足で窓の始値〜終値）と直接比べると戦略側が不利。上限を外した参考値は `--param max_position_frac=1.0` で出す。
+
+所要時間の目安（この機・N100、`--workers 3`、データ約2年）: 3戦略 × 15m/1h/4h × 100窓 × 1ペア（900ジョブ）で約30秒。ジョブ数（戦略数 × 時間足 × 窓数 × ペア数、`--grid` なら組数倍）に比例する。5m は 15m の約3倍重い。
 
 ## 評価指標
 
