@@ -17,6 +17,21 @@ bitbank 向けの自動売買システム。**「確実に儲ける」ではな�
 - **過剰最適化検知**: 再評価ごとに最適パラメータの変動を記録。暴れたら警告。OOS成績が大きく劣化したら新パラメータを採用せず前回設定を維持。
 - **同一窓比較（compare）**: 複数の (戦略, params) × 時間足 × ペアを、**同じランダム60日窓の集合**で評価して横並びにする（`src/backtest/compare.py`）。montecarlo は戦略ごとに別々の区間を引くため、戦略同士の比較にはこちらを使う。
 
+### 積立 × 自動取引（dca）
+
+毎月定額を入金して自動取引に回したとき、N か月後にいくらになるかの分布を出す（`src/backtest/dca.py`）。ランダムな N か月窓を複数本引き（t0 は UTC 日境界、入金は t0 + k か月）、各窓で「入金のみ」「毎月その時点で買い持ち（dca_buy_and_hold）」「戦略（`simulator.run(deposits=...)`）」の最終資産を比べる。
+
+```bash
+# 既定: 4h sma_cross 20/60 ATR×5、btc/eth、¥10,000 × 6か月、窓 100 本
+python -m src.backtest.dca
+# 直近 6 か月を 1 本だけ
+python -m src.backtest.dca --latest
+# 戦略・時間足・金額を変える
+python -m src.backtest.dca --spec sma_cross:fast=40,slow=50 --timeframes 1h 4h --monthly 20000 --months 12
+```
+
+出力は `state/dca_<pair|all>_<seed|latest>.csv`（要約）と `state/dca_rows_...csv`（窓別）。`win_rate` は元本を上回った窓の割合、`beat_dca_bh` は積立買い持ちを上回った割合、`worst_pnl_dd` は入金を除いた損益カーブの最大落ち込み（円）。最小注文数量（bitbank: BTC 0.0001 等）は未モデル化なので、少額では実機のサイズが丸まる。
+
 ### 同一窓比較（compare）
 
 窓はカレンダー時刻（一様乱数で引き、開始 t0 を 4h 境界に丸める。`--seed` で固定）で引くので、全戦略・全時間足・全ペアで同じ期間になる。ジョブは `multiprocessing`(fork) で並列実行（`--workers` 既定 = コア数−1）。

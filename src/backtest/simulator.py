@@ -67,12 +67,22 @@ def _atr(df: pd.DataFrame, period: int) -> pd.Series:
 def run(df: pd.DataFrame, params: dict[str, Any] | None = None,
         bars_per_year: float = 525_600.0,
         strategy: str = "sma_cross",
-        no_entry_before: pd.Timestamp | None = None) -> tuple[pd.Series, M.Metrics]:
+        no_entry_before: pd.Timestamp | None = None,
+        deposits: pd.Series | None = None) -> tuple[pd.Series, M.Metrics]:
     """no_entry_before を渡すと、その時刻より前のバーでは新規エントリーしない
-    （指標のウォームアップ用に前置したバーを取引対象から外す）。"""
+    （指標のウォームアップ用に前置したバーを取引対象から外す）。
+    deposits は「入金時刻 -> JPY」の Series。各入金はその時刻以降の最初のバーの
+    冒頭で現金に加算される（積立シミュレーション用。df の範囲外の入金は無視）。"""
     p = {**DEFAULT_PARAMS, **(params or {})}
+    dep_amt = np.zeros(len(df))
+    if deposits is not None and len(deposits) and len(df):
+        for t, amt in deposits.sort_index().items():
+            j = int(df.index.searchsorted(t))
+            if j < len(df):
+                dep_amt[j] += float(amt)
     if len(df) < ST.warmup_bars(strategy, p) + 2:
-        eq = pd.Series([p["initial_equity"]], index=df.index[:1] if len(df) else None)
+        eq = pd.Series([p["initial_equity"] + dep_amt.sum()],
+                       index=df.index[:1] if len(df) else None)
         return eq, M.from_run(eq, [], bars_per_year)
 
     close = df["close"]
@@ -110,6 +120,12 @@ def run(df: pd.DataFrame, params: dict[str, Any] | None = None,
         if day != cur_day:
             cur_day = day
             day_start_equity = equity
+
+        # 入金: 現金に加算。損失判定の基準にも足して「入金＝利益」にならないようにする
+        if dep_amt[i]:
+            cash += dep_amt[i]
+            equity += dep_amt[i]
+            day_start_equity += dep_amt[i]
 
         # --- 保有中: 損切り or シグナル消失でクローズ ---
         if units > 0:
