@@ -55,7 +55,7 @@ def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("--dry-run", action="store_true")
     args = ap.parse_args()
-    db_path, _, _ = _cfg()
+    db_path, _, _, _ = _cfg()
     store = PaperStore(db_path)
     msg = build_message(store)
 
