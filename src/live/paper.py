@@ -17,11 +17,11 @@ from src.data import fetch as FETCH
 from src.live import discord, engine, feed
 from src.live.store import PaperStore
 
-# config に [paper] が無い場合の既定（A=成行トレンド / B=指値intraday、各¥100k）
+# config に [paper] が無い場合の既定（A=4h成行トレンド / B=5m指値intraday、各¥100k）
 DEFAULT_ACCOUNTS = [
     {"name": "A_trend", "strategy": "sma_cross", "order_type": "taker",
-     "timeframe": "1h", "pairs": ["btc_jpy", "eth_jpy"], "base_jpy": 100_000,
-     "params": {"fast": 40, "slow": 50, "atr_stop_mult": 2.5, "risk_per_trade": 0.01}},
+     "timeframe": "4h", "pairs": ["btc_jpy", "eth_jpy"], "base_jpy": 100_000,
+     "params": {"fast": 20, "slow": 60, "atr_stop_mult": 5.0, "risk_per_trade": 0.01}},
     {"name": "B_intraday", "strategy": "rsi", "order_type": "maker",
      "timeframe": "5m", "pairs": ["btc_jpy"], "base_jpy": 100_000,
      "params": {"rsi_period": 14, "rsi_entry": 30, "rsi_exit": 55,
