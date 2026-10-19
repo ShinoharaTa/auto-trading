@@ -134,6 +134,23 @@ def roc(df: pd.DataFrame, p: dict[str, Any]) -> pd.Series:
     return sig.shift(1).fillna(0.0)
 
 
+def regime_switch(df: pd.DataFrame, p: dict[str, Any]) -> pd.Series:
+    """ADX で局面判定し、トレンドなら trend_strategy、レンジなら range_strategy。
+
+    サブ戦略のパラメータは同じ p から読む。サブ戦略のシグナルは shift 済みなので
+    合成後に shift を重ねず、局面フラグだけ shift(1) して揃える。
+    """
+    trend_name = str(p.get("trend_strategy", "sma_cross"))
+    range_name = str(p.get("range_strategy", "rsi"))
+    if "regime_switch" in (trend_name, range_name):
+        raise ValueError("regime_switch はサブ戦略に自分自身を指定できない")
+    sig_t = STRATEGIES[trend_name](df, p)
+    sig_r = STRATEGIES[range_name](df, p)
+    adx = _adx(df, int(p.get("regime_adx_period", 14)))
+    trending = (adx > float(p.get("regime_adx_min", 25.0))).shift(1, fill_value=False)
+    return pd.Series(np.where(trending, sig_t, sig_r), index=df.index).fillna(0.0)
+
+
 STRATEGIES: dict[str, Callable[[pd.DataFrame, dict[str, Any]], pd.Series]] = {
     "sma_cross": sma_cross,
     "rsi": rsi_reversion,
@@ -143,6 +160,7 @@ STRATEGIES: dict[str, Callable[[pd.DataFrame, dict[str, Any]], pd.Series]] = {
     "macd": macd,
     "sma_adx": sma_adx,
     "roc": roc,
+    "regime_switch": regime_switch,
 }
 
 # 各戦略のウォームアップに効く窓パラメータ（最小必要バー数の見積り用）
@@ -155,10 +173,40 @@ WARMUP_KEYS: dict[str, tuple[str, ...]] = {
     "macd": ("macd_slow", "macd_signal"),
     "sma_adx": ("fast", "slow", "adx_period"),
     "roc": ("roc_period",),
+    "regime_switch": ("fast", "slow", "rsi_period", "regime_adx_period"),
+}
+
+# 各戦略の既定パラメータ（戦略関数内の p.get の既定値と揃える。こちらを正とする）
+DEFAULTS: dict[str, dict[str, Any]] = {
+    "sma_cross": {"fast": 20, "slow": 60},
+    "rsi": {"rsi_period": 14, "rsi_entry": 30, "rsi_exit": 55},
+    "bollinger": {"bb_period": 20, "bb_k": 2.0},
+    "ema_cross": {"fast": 20, "slow": 60},
+    "donchian": {"dc_entry": 20, "dc_exit": 10},
+    "macd": {"macd_fast": 12, "macd_slow": 26, "macd_signal": 9},
+    "sma_adx": {"fast": 20, "slow": 60, "adx_period": 14, "adx_min": 20.0},
+    "roc": {"roc_period": 24, "roc_entry": 0.0, "roc_exit": -0.01},
+    "regime_switch": {"regime_adx_period": 14, "regime_adx_min": 25.0,
+                      "trend_strategy": "sma_cross", "range_strategy": "rsi"},
 }
 
 
 def warmup_bars(strategy: str, p: dict[str, Any]) -> int:
-    keys = WARMUP_KEYS.get(strategy, ())
-    windows = [int(p.get(k, 0)) for k in keys] + [int(p.get("atr_period", 30))]
-    return max(windows) if windows else 30
+    """最小必要バー数の見積り。未指定パラメータは DEFAULTS で補う。"""
+    q = {**DEFAULTS.get(strategy, {}), **p}
+    if strategy == "macd":
+        # シグナル線は MACD 線の上にさらに EMA を重ねる
+        windows = [int(q["macd_slow"]) + int(q["macd_signal"])]
+    elif strategy == "sma_adx":
+        # ADX は二重平滑なので実効 2×adx_period
+        windows = [int(q["fast"]), int(q["slow"]), 2 * int(q["adx_period"])]
+    elif strategy == "regime_switch":
+        trend_name = str(q["trend_strategy"])
+        range_name = str(q["range_strategy"])
+        if "regime_switch" in (trend_name, range_name):
+            raise ValueError("regime_switch はサブ戦略に自分自身を指定できない")
+        windows = [warmup_bars(trend_name, q), warmup_bars(range_name, q),
+                   2 * int(q["regime_adx_period"])]
+    else:
+        windows = [int(q.get(k, 0)) for k in WARMUP_KEYS.get(strategy, ())]
+    return max(windows + [int(q.get("atr_period", 30))])
