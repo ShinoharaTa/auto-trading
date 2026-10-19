@@ -82,7 +82,6 @@ def run(df: pd.DataFrame, params: dict[str, Any] | None = None,
     units = 0.0
     entry_price = 0.0
     stop_price = 0.0
-    trade_entry_equity = 0.0
     # 執行コスト(片側)。maker は手数料リベート込みでtakerよりはるかに小さい。
     if p.get("order_type") == "maker":
         cost = p["fee_maker"] + p["maker_slippage"]
@@ -115,7 +114,9 @@ def run(df: pd.DataFrame, params: dict[str, Any] | None = None,
             if exit_now:
                 fill = price * (1 - cost)
                 cash += units * fill
-                trade_pnls.append(cash - trade_entry_equity)
+                # 損益は建玉そのものの差額で出す。評価額差分だと、同じ足で
+                # 損切り→再エントリーした際に前建玉の値動きが二重計上される。
+                trade_pnls.append(units * (fill - entry_price))
                 units = 0.0
 
         # サーキットブレーカ: その日の損失が上限超なら新規エントリーを止める
@@ -135,7 +136,6 @@ def run(df: pd.DataFrame, params: dict[str, Any] | None = None,
                 entry_price = fill
                 stop_price = price - stop_dist
                 cash -= units * fill
-                trade_entry_equity = equity
 
         equity = cash + units * price
         eq_curve.append(equity)
