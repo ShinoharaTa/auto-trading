@@ -83,6 +83,16 @@ STRATEGY_GRIDS: dict[str, dict[str, list[Any]]] = {
         "atr_stop_mult": [1.5, 2.5],
         "risk_per_trade": [0.01],
     },
+    "regime_switch": {
+        "regime_adx_min": [20, 25, 30],
+        "fast": [20, 40],
+        "slow": [50, 100],
+        "rsi_period": [14],
+        "rsi_entry": [30],
+        "rsi_exit": [55],
+        "atr_stop_mult": [2.5],
+        "risk_per_trade": [0.01],
+    },
 }
 
 # (短期, 長期) の順序を持つパラメータ組。短期 >= 長期 は無意味なのでスキップ
