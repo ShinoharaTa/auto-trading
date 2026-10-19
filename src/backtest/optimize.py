@@ -49,15 +49,52 @@ STRATEGY_GRIDS: dict[str, dict[str, list[Any]]] = {
         "atr_stop_mult": [1.5, 2.5],
         "risk_per_trade": [0.01],
     },
+    "ema_cross": {
+        "fast": [10, 20, 40],
+        "slow": [50, 100, 200],
+        "atr_stop_mult": [1.5, 2.5],
+        "risk_per_trade": [0.01],
+    },
+    "donchian": {
+        "dc_entry": [20, 40, 55],
+        "dc_exit": [10, 20],
+        "atr_stop_mult": [1.5, 2.5],
+        "risk_per_trade": [0.01],
+    },
+    "macd": {
+        "macd_fast": [8, 12],
+        "macd_slow": [21, 26, 40],
+        "macd_signal": [9],
+        "atr_stop_mult": [1.5, 2.5],
+        "risk_per_trade": [0.01],
+    },
+    "sma_adx": {
+        "fast": [20, 40],
+        "slow": [50, 100],
+        "adx_period": [14],
+        "adx_min": [20, 25, 30],
+        "atr_stop_mult": [1.5, 2.5],
+        "risk_per_trade": [0.01],
+    },
+    "roc": {
+        "roc_period": [12, 24, 48],
+        "roc_entry": [0.0, 0.01],
+        "roc_exit": [-0.01],
+        "atr_stop_mult": [1.5, 2.5],
+        "risk_per_trade": [0.01],
+    },
 }
+
+# (短期, 長期) の順序を持つパラメータ組。短期 >= 長期 は無意味なのでスキップ
+_ORDERED = (("fast", "slow"), ("macd_fast", "macd_slow"))
 
 
 def _param_combos(grid: dict[str, list[Any]]) -> Iterable[dict[str, Any]]:
     keys = list(grid)
     for values in itertools.product(*(grid[k] for k in keys)):
         params = dict(zip(keys, values))
-        if params.get("fast", 0) >= params.get("slow", 1):
-            continue  # fast >= slow は無意味
+        if any(params.get(a, 0) >= params.get(b, 1) for a, b in _ORDERED):
+            continue  # 短期 >= 長期 は無意味
         yield params
 
 

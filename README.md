@@ -40,6 +40,13 @@ bitbank 向けの自動売買システム。**「確実に儲ける」ではな�
 - [x] [3] モンテカルロ評価（ブロック・ブートストラップ。`src/backtest/montecarlo.py`）
 - [x] [4] パラメータ最適化（時間足リサンプリング `src/data/resample.py` + `src/backtest/optimize.py`）
 - [x] 戦略を差し替え可能に分離（`src/backtest/strategies.py`: sma_cross / rsi / bollinger）
+- [x] トレンド系戦略を5種追加（`strategies.py`。方針: `docs/trend-eval-plan.md`）
+  - `ema_cross`: 短期EMA > 長期EMA でロング（sma_cross のEMA版。立ち上がりが速い分レンジで騙されやすい）
+  - `donchian`: 直前N本(`dc_entry`)の高値更新で買い、直前M本(`dc_exit`)の安値割れで手仕舞い
+  - `macd`: MACD線 > シグナル線 かつ MACD > 0 でロング（中期トレンドの継続局面向け）
+  - `sma_adx`: SMAクロス + ADX > `adx_min` のときだけ新規エントリー。出口はSMA反転のみ（ADX低下では出ない）
+  - `roc`: N本前比の騰落率 > `roc_entry` で買い、< `roc_exit` で手仕舞い（時系列モメンタム。entry/exit にヒステリシス）
+  - `optimize --strategy all`（8戦略）の所要時間目安: `--runs 30` で約2.5分（実測146秒、btc_jpy 2年分・N100）。既定 `--runs 200` は runs に比例して約16分（推定）
 - [x] データ拡張: 2年分(2022-06〜2024-06、2022下落相場を含む、110万本)
 - [x] [5] ウォークフォワード再評価ループ（`src/backtest/walkforward.py`。test_days=30で月次/7で週次）
 - [ ] Risk Manager + サーキットブレーカ
