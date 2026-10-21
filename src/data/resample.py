@@ -11,6 +11,7 @@ TIMEFRAMES: dict[str, tuple[str, int]] = {
     "30m": ("30min", 30),
     "1h": ("60min", 60),
     "4h": ("240min", 240),
+    "1d": ("1D", 1440),
 }
 
 # 期間プリセット（分）
