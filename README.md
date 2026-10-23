@@ -52,6 +52,7 @@ python -m src.backtest.compare --strategies sma_cross --grid --timeframes 1h
 注意:
 - **窓は互いに重なる。** 180日に60日窓は非重複で3本しか取れず、ランダム100本は強く相関する（独立な100回の試行ではない）。p5 や勝ち区間率は見かけより粗いので、絶対水準（robust 判定）は信用せず、**同じ窓での戦略同士の相対比較**に使う。データを延ばす（`fetch --start`）ほど改善する。
 - **ウォームアップ・プレフィックス。** 各窓の前に `max(2 × warmup_bars, 200)` 本を足して切り出し、指標をウォームアップさせる。`simulator.run(no_entry_before=t0)` で窓開始前の新規エントリーを抑止するので、`total_return` / `max_drawdown` / `n_trades` は窓本体の成績と一致し、4h×長期SMAでも60日まるごと取引対象になる（`sharpe` はプレフィックスの平坦バーの分だけ薄まるが全戦略同条件）。プレフィックスの無い montecarlo とは**数値が一致しない**。データ先頭付近でプレフィックスが足りない窓は `warm_short=True`（除外はしない）。
+- **損切りなし（トレンドフィルタ）。** `atr_stop_mult=0`（または None）で損切りを無効にできる。サイズは `min(max_position_frac × 資産, 現金)` のみで決まり `risk_per_trade` は無視される。`max_position_frac=1.0` と組み合わせると「シグナル中は全額保有、消えたら全額現金」になる。simulator と live engine で同じ規約。
 - **B&H 比較。** simulator は `max_position_frac=0.25` で建玉を資産の25%に制限するので、フル買い持ち（`bh_return`、1分足で窓の始値〜終値）と直接比べると戦略側が不利。上限を外した参考値は `--param max_position_frac=1.0` で出す。
 
 所要時間の目安（この機・N100、`--workers 3`、データ約2年）: 3戦略 × 15m/1h/4h × 100窓 × 1ペア（900ジョブ）で約30秒。ジョブ数（戦略数 × 時間足 × 窓数 × ペア数、`--grid` なら組数倍）に比例する。5m は 15m の約3倍重い。
