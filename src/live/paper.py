@@ -26,6 +26,10 @@ DEFAULT_ACCOUNTS = [
      "timeframe": "5m", "pairs": ["btc_jpy"], "base_jpy": 100_000,
      "params": {"rsi_period": 14, "rsi_entry": 30, "rsi_exit": 55,
                 "atr_stop_mult": 2.5, "risk_per_trade": 0.01}},
+    {"name": "C_trend_1d", "strategy": "sma_cross", "order_type": "taker",
+     "timeframe": "1d", "pairs": ["btc_jpy"], "base_jpy": 100_000,
+     "params": {"fast": 20, "slow": 60, "atr_stop_mult": 0,
+                "risk_per_trade": 1.0, "max_position_frac": 1.0}},
 ]
 
 
