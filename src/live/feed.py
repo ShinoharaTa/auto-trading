@@ -12,7 +12,7 @@ from src.data import fetch as FETCH
 from src.data import resample as R
 
 # 時間足ごとのウォームアップに必要なおおよその日数（指標窓を賄う）
-_LOOKBACK_DAYS = {"1m": 3, "5m": 3, "15m": 5, "30m": 8, "1h": 14, "4h": 40}
+_LOOKBACK_DAYS = {"1m": 3, "5m": 3, "15m": 5, "30m": 8, "1h": 14, "4h": 40, "1d": 150}
 
 
 def get_recent_bars(db_path: str, pair: str, timeframe: str,
