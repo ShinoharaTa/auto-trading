@@ -118,6 +118,7 @@ python -m src.backtest.compare --strategies sma_cross --grid --timeframes 1h
 - [x] ペア別設定（`src/settings_store.py` + `src/backtest/tune.py`）。各ペア独立の設定＋OOS信頼性ゲートで enabled/disabled を自動判定。`state/pair_settings.json`
 - [x] 定期再チューニング(機械的・LLM不要) `src/retune.py` + `scripts/retune.sh`（cron）。増分取得→全ペア再チューニング→差分ログ→review_neededフラグ
 - [x] maker/taker 手数料モデル（`simulator.py` の order_type）。intraday採算の分岐点
+- [x] 長期運用候補 C: 1d sma_cross 20/60・損切りなし・全額（btc 2018〜の12か月積立×300窓: 元本超え82%・中央値+8%・p5 -6%・年3回売買。推奨運用は「半分を積立買い持ち、半分をC」#21）
 - [x] 検証済み候補2系統: A=4h sma_cross 20/60・ATR×5・taker（60日窓×100: 勝ち区間率58%・中央値+0.3%、1h 版は15%/-2.4% だったため変更 #12）/ B=5m RSI逆張り・maker（OOS 勝率81%・+10%/21ヶ月）
 - [x] ペーパートレード基盤（`src/live/`）: 2口座(A_trend成行 / B_intraday指値)各¥100k、複利、指値約定率を実測、実発注なし
 - [x] 日次Discord通知（`src/live/notify_discord.py`）: 評価額 + 1日/1週/2週 + 約定率

@@ -40,3 +40,14 @@ timeframe = "5m"
 pairs = ["btc_jpy"]
 base_jpy = 100000
 params = { rsi_period = 14, rsi_entry = 30, rsi_exit = 55, atr_stop_mult = 2.5, risk_per_trade = 0.01 }
+
+# C: 1d トレンドフィルタ・成行(taker)・¥100k。SMA20>SMA60 の間だけ全額保有、割れたら全額現金。
+# 損切りなし（atr_stop_mult = 0）。長期運用候補（12か月積立比較で元本超え82%・年3回売買、#21）
+[[paper.accounts]]
+name = "C_trend_1d"
+strategy = "sma_cross"
+order_type = "taker"
+timeframe = "1d"
+pairs = ["btc_jpy"]
+base_jpy = 100000
+params = { fast = 20, slow = 60, atr_stop_mult = 0, risk_per_trade = 1.0, max_position_frac = 1.0 }
