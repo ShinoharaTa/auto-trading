@@ -93,7 +93,7 @@ python -m src.backtest.compare --strategies sma_cross --grid --timeframes 1h
   - トレードオフ: (1) 利点: 「傾向に応じて」を1戦略で表現でき、optimize/walkforward/validate/paper にそのまま乗る。(2) 単一時間足内の切替のみ（A=1h / B=5m のような時間足違いの切替は口座配分の問題で対象外）。(3) 局面が変わるとシグナル源が変わるので保有中に手仕舞いが起きうる（レンジ入りで順張り玉を閉じるのは仕様）。パラメータが増える分過剰適合しやすいので walkforward の `overfit_gap` を必ず見る。(4) ADX は遅行指標（1h×14本≒14時間遅れ）。局面の切替回数が少なく、効果を統計的に言うにはデータが足りない可能性が高い
   - `optimize --strategy regime_switch --runs 30` は約19秒（実測）。`optimize --strategy all`（9戦略）は `--runs 30` で約2.8分（推定）
 - [x] `warmup_bars` を戦略の既定パラメータ（`strategies.DEFAULTS`）込みで評価し、macd は `macd_slow + macd_signal`、sma_adx は `2 × adx_period`、regime_switch はサブ戦略と `2 × regime_adx_period` の最大を反映（`STRATEGIES` / `WARMUP_KEYS` / `DEFAULTS` のキーは常に一致させる）
-  - paper に載せる戦略は `warmup_bars × 2` が feed の `_LOOKBACK_DAYS`（1h=336本 / 4h=240本）以内であること（`src/live/feed.py`）。engine は `warmup_bars + 2` 本未満だと判定自体をスキップする。×2 は指標を安定させるための余裕
+  - paper に載せる戦略は `warmup_bars × 2` が feed の `_LOOKBACK_DAYS`（1h=336本 / 4h=240本 / 1d=150本）以内であること（`src/live/feed.py`）。engine は `warmup_bars + 2` 本未満だと判定自体をスキップする。×2 は指標を安定させるための余裕
 - [x] データ拡張: 2年分(2022-06〜2024-06、2022下落相場を含む、110万本)
 - [x] [5] ウォークフォワード再評価ループ（`src/backtest/walkforward.py`。test_days=30で月次/7で週次）
 - [ ] Risk Manager + サーキットブレーカ
