@@ -22,7 +22,7 @@ from src.config import ROOT
 
 DEFAULT_PARAMS: dict[str, Any] = {
     "atr_period": 30,     # ATR算出期間(本)
-    "atr_stop_mult": 2.0, # 損切り幅 = ATR * mult
+    "atr_stop_mult": 2.0, # 損切り幅 = ATR * mult。0 / None で損切りなし（サイズは max_position_frac のみ）
     "risk_per_trade": 0.01,  # 1トレードで資産の何割をリスクに晒すか
     "order_type": "taker",  # "taker"(成行) or "maker"(指値)。intraday採算の分岐点。
     "fee": 0.0012,        # taker 片側手数料(bitbank ≒ 0.12%)
@@ -87,6 +87,8 @@ def run(df: pd.DataFrame, params: dict[str, Any] | None = None,
 
     close = df["close"]
     atr = _atr(df, p["atr_period"])
+    stop_mult = p.get("atr_stop_mult")
+    use_stop = stop_mult is not None and float(stop_mult) > 0
     # 戦略がシグナルを生成（戦略側で先読み防止の shift 済み）
     long_signal = ST.STRATEGIES[strategy](df, p)
 
@@ -129,7 +131,7 @@ def run(df: pd.DataFrame, params: dict[str, Any] | None = None,
 
         # --- 保有中: 損切り or シグナル消失でクローズ ---
         if units > 0:
-            exit_now = price <= stop_price or sig == 0
+            exit_now = (use_stop and price <= stop_price) or sig == 0
             if exit_now:
                 fill = price * (1 - cost)
                 cash += units * fill
@@ -143,14 +145,19 @@ def run(df: pd.DataFrame, params: dict[str, Any] | None = None,
                   and equity <= day_start_equity * (1.0 - float(daily_limit)))
 
         # --- 無ポジ: シグナル点灯 & ATR有効 & 非停止ならエントリー ---
-        if (units == 0 and sig == 1 and not halted and not np.isnan(a) and a > 0
+        atr_ok = not np.isnan(a) and a > 0
+        if (units == 0 and sig == 1 and not halted and (atr_ok or not use_stop)
                 and (no_entry_before is None or idx[i] >= no_entry_before)):
-            stop_dist = p["atr_stop_mult"] * float(a)
-            risk_cash = equity * p["risk_per_trade"]
-            size = risk_cash / stop_dist           # 損切りまでの距離で数量を決める
             fill = price * (1 + cost)
-            # サイズ上限: ①1%リスク基準 ②最大ポジ比率 ③現金(レバ無し) の最小
-            size = min(size, max_frac * equity / fill, cash / fill)
+            if use_stop:
+                stop_dist = float(stop_mult) * float(a)
+                risk_cash = equity * p["risk_per_trade"]
+                size = risk_cash / stop_dist       # 損切りまでの距離で数量を決める
+                # サイズ上限: ①1%リスク基準 ②最大ポジ比率 ③現金(レバ無し) の最小
+                size = min(size, max_frac * equity / fill, cash / fill)
+            else:
+                stop_dist = 0.0                    # 損切りなし: 比率と現金だけで決める
+                size = min(max_frac * equity / fill, cash / fill)
             if size > 0:
                 units = size
                 entry_price = fill

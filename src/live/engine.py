@@ -32,14 +32,23 @@ def _exit_cost(p: dict[str, Any]) -> float:
     return p["fee"] + p["slippage"]  # 出口は確実に逃げるため常に成行(taker)
 
 
+def _use_stop(p: dict[str, Any]) -> bool:
+    """atr_stop_mult が 0 / None なら損切りなし（simulator と同じ規約）。"""
+    m = p.get("atr_stop_mult")
+    return m is not None and float(m) > 0
+
+
 def _size(equity: float, cash: float, atr: float, p: dict[str, Any],
           fill_price: float) -> tuple[float, float]:
+    """(数量, 損切り距離)。損切りなしのときは距離 0 を返し、呼び出し側で stop_price=0 にする。"""
+    cap = min(p["max_position_frac"] * equity / fill_price, cash / fill_price)
+    if not _use_stop(p):
+        return max(cap, 0.0), 0.0
     stop_dist = p["atr_stop_mult"] * atr
-    if stop_dist <= 0:
+    if not stop_dist > 0:  # NaN / 0 は見送り
         return 0.0, 0.0
     size = (equity * p["risk_per_trade"]) / stop_dist
-    size = min(size, p["max_position_frac"] * equity / fill_price, cash / fill_price)
-    return max(size, 0.0), stop_dist
+    return max(min(size, cap), 0.0), stop_dist
 
 
 def _account_equity(store: PaperStore, account: str, price_map: dict[str, float]) -> float:
@@ -101,7 +110,8 @@ def _step_pair(store: PaperStore, name: str, pair: str, bars: pd.DataFrame,
             size, stop_dist = _size(equity, cash, atr, p, fill)
             if size > 0:
                 store.set_cash(name, cash - size * fill)
-                store.set_position(name, pair, size, fill, pend["limit_price"] - stop_dist)
+                store.set_position(name, pair, size, fill,
+                                   pend["limit_price"] - stop_dist if stop_dist > 0 else 0.0)
                 store.add_trade(name, pair, "buy", "maker_fill", fill, size, now_ts)
                 store.bump_fillstat(name, "filled")
         else:
@@ -112,7 +122,7 @@ def _step_pair(store: PaperStore, name: str, pair: str, bars: pd.DataFrame,
     # 2) 保有中: 損切り or シグナル消失で成行クローズ
     if pos is not None:
         units = pos["units"]
-        if low <= pos["stop_price"]:
+        if pos["stop_price"] > 0 and low <= pos["stop_price"]:
             fill = pos["stop_price"] * (1 - _exit_cost(p))
             store.set_cash(name, store.get_cash(name) + units * fill)
             store.add_trade(name, pair, "sell", "stop", fill, units, now_ts)
@@ -127,7 +137,8 @@ def _step_pair(store: PaperStore, name: str, pair: str, bars: pd.DataFrame,
         return  # 継続保有
 
     # 3) 無ポジ & 指値なし & シグナル点灯 → エントリー
-    if pend is None and sig == 1 and not np.isnan(atr) and atr > 0:
+    atr_ok = not np.isnan(atr) and atr > 0
+    if pend is None and sig == 1 and (atr_ok or not _use_stop(p)):
         if order_type == "maker":
             store.set_pending(name, pair, "buy", close, now_ts)  # 次足で約定判定
             store.bump_fillstat(name, "placed")
@@ -138,5 +149,6 @@ def _step_pair(store: PaperStore, name: str, pair: str, bars: pd.DataFrame,
             size, stop_dist = _size(equity, cash, atr, p, fill)
             if size > 0:
                 store.set_cash(name, cash - size * fill)
-                store.set_position(name, pair, size, fill, close - stop_dist)
+                store.set_position(name, pair, size, fill,
+                                   close - stop_dist if stop_dist > 0 else 0.0)
                 store.add_trade(name, pair, "buy", "taker_fill", fill, size, now_ts)
