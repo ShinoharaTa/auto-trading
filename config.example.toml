@@ -21,15 +21,15 @@ db_path = "state/paper.sqlite"
 poll_seconds = 60
 # Discord Webhook は環境変数 DISCORD_WEBHOOK_URL に設定する（ここには書かない）
 
-# A: 1hトレンド・成行(taker)・各¥100k。約定確実で堅実
+# A: 4hトレンド・成行(taker)・各¥100k。60日窓比較で 1h より安定（#12）
 [[paper.accounts]]
 name = "A_trend"
 strategy = "sma_cross"
 order_type = "taker"
-timeframe = "1h"
+timeframe = "4h"
 pairs = ["btc_jpy", "eth_jpy"]
 base_jpy = 100000
-params = { fast = 40, slow = 50, atr_stop_mult = 2.5, risk_per_trade = 0.01 }
+params = { fast = 20, slow = 60, atr_stop_mult = 5.0, risk_per_trade = 0.01 }
 
 # B: 5m RSI逆張り・指値(maker)・¥100k。指値の実約定率を実測する
 [[paper.accounts]]
