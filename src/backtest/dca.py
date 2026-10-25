@@ -140,21 +140,38 @@ def run_dca(frames, pairs, specs, timeframes, windows, monthly, months,
             .reset_index(drop=True))
 
 
-def summarize(rows: pd.DataFrame) -> pd.DataFrame:
-    """窓ごとの最終資産の分布。末尾にペアごとの dca_buy_and_hold 行。"""
+def _dist_row(pair: str, st: str, tf: str, params: str, g: pd.DataFrame,
+              final: pd.Series) -> dict[str, Any]:
+    inv = g["invested"]
+    return {
+        "pair": pair, "strategy": st, "timeframe": tf, "params": params,
+        "invested": inv.median(),
+        "win_rate": (final > inv).mean(),
+        "beat_dca_bh": (final > g["bh_final"]).mean(),
+        "median_final": final.median(), "p5_final": final.quantile(0.05),
+        "p95_final": final.quantile(0.95),
+        "median_ret": (final / inv - 1.0).median(),
+        "p5_ret": (final / inv - 1.0).quantile(0.05),
+        "worst_pnl_dd": g["worst_pnl_dd"].min(), "med_trades": g["n_trades"].median(),
+    }
+
+
+def summarize(rows: pd.DataFrame, blends: list[float] | None = None) -> pd.DataFrame:
+    """窓ごとの最終資産の分布。末尾にペアごとの dca_buy_and_hold 行。
+
+    blends=[k, ...] を渡すと、各戦略について「(1-k) × 積立買い持ち + k × 戦略」の
+    合成行（strategy='blend(k)'）を追加する。最終資産は現金に線形なので窓ごとに
+    厳密に合成できる（最小注文数量は未モデル化）。worst_pnl_dd / med_trades は
+    戦略単体の値をそのまま載せる。"""
     out = []
     for (pair, st, tf, params), g in rows.groupby(
             ["pair", "strategy", "timeframe", "params"], sort=False):
-        out.append({
-            "pair": pair, "strategy": st, "timeframe": tf, "params": params,
-            "invested": g["invested"].median(),
-            "win_rate": (g["pnl"] > 0).mean(),
-            "beat_dca_bh": (g["final"] > g["bh_final"]).mean(),
-            "median_final": g["final"].median(), "p5_final": g["final"].quantile(0.05),
-            "p95_final": g["final"].quantile(0.95),
-            "median_ret": g["ret"].median(), "p5_ret": g["ret"].quantile(0.05),
-            "worst_pnl_dd": g["worst_pnl_dd"].min(), "med_trades": g["n_trades"].median(),
-        })
+        out.append(_dist_row(pair, st, tf, params, g, g["final"]))
+        for k in blends or []:
+            mixed = (1.0 - k) * g["bh_final"] + k * g["final"]
+            out.append(_dist_row(pair, f"blend({k:g})", tf, params, g, mixed)
+                       | {"params": json.dumps({**json.loads(params), "_base": st},
+                                               sort_keys=True)})
     for pair, g in rows.drop_duplicates(["pair", "window_id"]).groupby("pair", sort=False):
         out.append({
             "pair": pair, "strategy": "dca_buy_and_hold", "timeframe": "-", "params": "{}",
@@ -183,6 +200,8 @@ def main() -> None:
     ap.add_argument("--runs", type=int, default=100)
     ap.add_argument("--seed", type=int, default=42)
     ap.add_argument("--latest", action="store_true", help="直近 N か月を 1 本だけ走らせる")
+    ap.add_argument("--blend", nargs="+", type=float, default=[],
+                    help="積立買い持ちと戦略の配分 k（0..1、戦略側の比率）。合成行を要約に追加")
     ap.add_argument("--workers", type=int, default=max(1, (os.cpu_count() or 1) - 1))
     ap.add_argument("--out", default=None)
     ap.add_argument("--out-rows", default=None)
@@ -210,7 +229,7 @@ def main() -> None:
           f"monthly={args.monthly:.0f} workers={args.workers}")
     rows = run_dca(frames, args.pairs, specs, args.timeframes, windows,
                    args.monthly, args.months, args.workers)
-    table = summarize(rows)
+    table = summarize(rows, args.blend)
     out_rows.parent.mkdir(parents=True, exist_ok=True)
     rows.to_csv(out_rows, index=False)
     table.to_csv(out_sum, index=False)

@@ -30,6 +30,7 @@ python -m src.backtest.dca --latest
 python -m src.backtest.dca --spec sma_cross:fast=40,slow=50 --timeframes 1h 4h --monthly 20000 --months 12
 ```
 
+`--blend 0.25 0.5` を付けると「(1-k) × 積立買い持ち + k × 戦略」の合成行（`strategy=blend(k)`）を要約に足す。最終資産は現金に線形なので窓ごとに厳密に合成できる。
 出力は `state/dca_<pair|all>_<seed|latest>.csv`（要約）と `state/dca_rows_...csv`（窓別）。`win_rate` は元本を上回った窓の割合、`beat_dca_bh` は積立買い持ちを上回った割合、`worst_pnl_dd` は入金を除いた損益カーブの最大落ち込み（円）。最小注文数量（bitbank: BTC 0.0001 等）は未モデル化なので、少額では実機のサイズが丸まる。
 
 ### 同一窓比較（compare）
